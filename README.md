@@ -75,6 +75,16 @@ Add this to your Claude Desktop configuration file:
 
 Replace `/path/to/civ6mcp` with the actual path to where you cloned the repository.
 
+## Claude Project Setup (Recommended)
+
+For the best experience, create a Claude Project with the strategic advisor instructions:
+
+1. In Claude, create a new Project called "Civilization VI"
+2. Copy the contents of [PROJECT_INSTRUCTIONS.md](PROJECT_INSTRUCTIONS.md) into the Project Instructions
+3. Start a conversation in that project
+
+This gives Claude context about all the available tools and how to provide strategic advice.
+
 ## Available Tools
 
 | Tool | Description |
