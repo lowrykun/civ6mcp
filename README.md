@@ -20,11 +20,13 @@ An MCP (Model Context Protocol) server that provides Claude with real-time acces
 - Civilization VI (macOS or Windows)
 - Claude Desktop
 
+> **Important**: You must enable game logging in Civilization VI for the MCP server to access game data. See [Enable Game Logging](#enable-game-logging) below.
+
 ## Installation
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/civ6mcp.git
+   git clone https://github.com/lowrykun/civ6mcp.git
    cd civ6mcp
    ```
 
