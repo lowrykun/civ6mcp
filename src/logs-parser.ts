@@ -86,7 +86,7 @@ function formatCivName(rawName: string): string {
 // Format enum-style names (UNIT_TANK -> Tank, BUILDING_LIBRARY -> Library)
 function formatEnumName(name: string): string {
   return name
-    .replace(/^(UNIT_|BUILDING_|DISTRICT_|PROJECT_|TECH_|CIVIC_)/, '')
+    .replace(/^(UNIT_|BUILDING_|DISTRICT_|PROJECT_|TECH_|CIVIC_|GREAT_PERSON_INDIVIDUAL_|GREAT_PERSON_CLASS_)/, '')
     .split('_')
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ');
@@ -560,6 +560,20 @@ export function parseGreatPeople(): GreatPersonEvent[] {
   }
 
   return events;
+}
+
+// Cultural great people classes for cultural victory tracking
+const CULTURAL_GP_CLASSES = [
+  'GREAT_PERSON_CLASS_ARTIST',
+  'GREAT_PERSON_CLASS_WRITER',
+  'GREAT_PERSON_CLASS_MUSICIAN',
+];
+
+export function parseCulturalGreatPeople(): GreatPersonEvent[] {
+  const allGreatPeople = parseGreatPeople();
+  return allGreatPeople.filter(gp =>
+    CULTURAL_GP_CLASSES.some(c => gp.gpClass.toUpperCase().replace(/ /g, '_').includes(c.replace('GREAT_PERSON_CLASS_', '')))
+  );
 }
 
 // ============ Formatting Functions ============
@@ -1060,6 +1074,102 @@ export function formatGreatPeople(events: GreatPersonEvent[]): string {
     lines.push('');
     for (const gp of available) {
       lines.push(`- **${gp.displayName}** (${gp.gpClass}, ${gp.era}) - Cost: ${gp.cost}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+export function formatCulturalGreatPeople(events: GreatPersonEvent[]): string {
+  if (events.length === 0) {
+    return 'No cultural Great People data available. Artists, Writers, and Musicians have not been recruited yet.';
+  }
+
+  const lines: string[] = [];
+  lines.push('# Cultural Victory - Great People');
+  lines.push('');
+  lines.push('*Track who is collecting Great Artists, Writers, and Musicians for cultural victory.*');
+  lines.push('');
+
+  // Separate by type
+  const artists = events.filter(e => e.gpClass.toLowerCase().includes('artist'));
+  const writers = events.filter(e => e.gpClass.toLowerCase().includes('writer'));
+  const musicians = events.filter(e => e.gpClass.toLowerCase().includes('musician'));
+
+  // Count by civilization (only claimed ones)
+  const claimedByCiv = new Map<string, { artists: number; writers: number; musicians: number; works: number }>();
+
+  for (const gp of events) {
+    if (gp.event === 'Granted to Player' && gp.recipient) {
+      if (!claimedByCiv.has(gp.recipient)) {
+        claimedByCiv.set(gp.recipient, { artists: 0, writers: 0, musicians: 0, works: 0 });
+      }
+      const counts = claimedByCiv.get(gp.recipient)!;
+      if (gp.gpClass.toLowerCase().includes('artist')) counts.artists++;
+      else if (gp.gpClass.toLowerCase().includes('writer')) counts.writers++;
+      else if (gp.gpClass.toLowerCase().includes('musician')) counts.musicians++;
+    } else if (gp.event === 'Great Person Activated' && gp.recipient) {
+      // Activations = Great Works created
+      const civ = events.find(e => e.event === 'Granted to Player' && e.individual === gp.individual)?.recipient;
+      if (civ && claimedByCiv.has(civ)) {
+        claimedByCiv.get(civ)!.works++;
+      }
+    }
+  }
+
+  // Summary table
+  lines.push('## Cultural Victory Race');
+  lines.push('');
+  lines.push('| Civilization | Artists | Writers | Musicians | Total | Works Created |');
+  lines.push('|--------------|---------|---------|-----------|-------|---------------|');
+
+  const sorted = Array.from(claimedByCiv.entries())
+    .sort((a, b) => {
+      const totalA = a[1].artists + a[1].writers + a[1].musicians;
+      const totalB = b[1].artists + b[1].writers + b[1].musicians;
+      return totalB - totalA;
+    });
+
+  for (const [civ, counts] of sorted) {
+    const total = counts.artists + counts.writers + counts.musicians;
+    lines.push(`| ${civ} | ${counts.artists} | ${counts.writers} | ${counts.musicians} | ${total} | ${counts.works} |`);
+  }
+  lines.push('');
+
+  // Detailed timeline of who got what
+  const claimed = events.filter(e => e.event === 'Granted to Player');
+  if (claimed.length > 0) {
+    lines.push('## Recent Acquisitions');
+    lines.push('');
+
+    // Sort by turn descending, show last 10
+    const recentClaimed = [...claimed].sort((a, b) => b.turn - a.turn).slice(0, 10);
+    for (const gp of recentClaimed) {
+      const type = gp.gpClass.toLowerCase().includes('artist') ? '🎨' :
+                   gp.gpClass.toLowerCase().includes('writer') ? '📝' : '🎵';
+      lines.push(`- T${gp.turn}: ${type} **${gp.displayName}** → ${gp.recipient}`);
+    }
+    lines.push('');
+  }
+
+  // Show what's available
+  const available = events.filter(e => e.event === 'Added to Present Timeline');
+  // Get the latest available for each class (most recent addition)
+  const latestAvailable = new Map<string, GreatPersonEvent>();
+  for (const gp of available) {
+    const classKey = gp.gpClass.toLowerCase();
+    if (!latestAvailable.has(classKey) || gp.turn > latestAvailable.get(classKey)!.turn) {
+      latestAvailable.set(classKey, gp);
+    }
+  }
+
+  if (latestAvailable.size > 0) {
+    lines.push('## Currently Available');
+    lines.push('');
+    for (const [, gp] of latestAvailable) {
+      const type = gp.gpClass.toLowerCase().includes('artist') ? '🎨' :
+                   gp.gpClass.toLowerCase().includes('writer') ? '📝' : '🎵';
+      lines.push(`- ${type} **${gp.displayName}** (${gp.gpClass}, ${gp.era}) - Cost: ${gp.cost}`);
     }
   }
 

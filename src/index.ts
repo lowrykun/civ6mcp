@@ -34,6 +34,7 @@ import {
   parseTechStatus,
   parseWorldCongress,
   parseGreatPeople,
+  parseCulturalGreatPeople,
   formatDiplomacyStatus,
   formatDiplomacyModifiers,
   formatMilitaryIntelligence,
@@ -43,6 +44,7 @@ import {
   formatTechStatus,
   formatWorldCongress,
   formatGreatPeople,
+  formatCulturalGreatPeople,
   generateStrategicOverview,
 } from './logs-parser.js';
 
@@ -116,6 +118,8 @@ const GetTechStatusSchema = z.object({});
 const GetWorldCongressSchema = z.object({});
 
 const GetGreatPeopleSchema = z.object({});
+
+const GetCulturalGreatPeopleSchema = z.object({});
 
 const GetStrategicOverviewSchema = z.object({
   civilization: z.string().optional().describe('Your civilization name for personalized analysis'),
@@ -315,6 +319,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'get_great_people',
         description: 'Get Great People that have been claimed and those available for recruitment.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'get_great_people_culture',
+        description: 'Track Great Artists, Writers, and Musicians for cultural victory analysis. Shows who is collecting cultural Great People, how many Great Works have been created, and who is leading the culture race.',
         inputSchema: {
           type: 'object',
           properties: {},
@@ -756,6 +768,26 @@ Once you've played a turn, try this command again.`,
         }
 
         const formatted = formatGreatPeople(events);
+        return {
+          content: [{ type: 'text', text: formatted }],
+        };
+      }
+
+      case 'get_great_people_culture': {
+        const events = parseCulturalGreatPeople();
+
+        if (events.length === 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'No cultural Great People data available. Artists, Writers, and Musicians have not been recruited yet.',
+              },
+            ],
+          };
+        }
+
+        const formatted = formatCulturalGreatPeople(events);
         return {
           content: [{ type: 'text', text: formatted }],
         };
