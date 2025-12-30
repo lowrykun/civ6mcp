@@ -6,6 +6,7 @@ import type {
   MilitaryIntelligence,
   CombatRecord,
   CityProduction,
+  CityFoundingStats,
   TechProgress,
   CongressVote,
   CongressResult,
@@ -25,6 +26,7 @@ const LOG_FILES = {
   MILITARY: 'AI_Military.csv',
   COMBAT: 'CombatLog.csv',
   CITY_PRODUCTION: 'City_BuildQueue.csv',
+  CITY_BUILD: 'AI_CityBuild.csv',
   TECH: 'AI_Research.csv',
   WORLD_CONGRESS: 'World_Congress.csv',
   GREAT_PEOPLE: 'Game_GreatPeople.csv',
@@ -90,11 +92,12 @@ function formatEnumName(name: string): string {
     .join(' ');
 }
 
-// Format city name (LOC_CITY_HA_NOI -> Ha Noi)
+// Format city name (LOC_CITY_HA_NOI -> Ha Noi, LOC_CITY_NAME_GEELONG -> Geelong)
 function formatCityName(locName: string): string {
   return locName
+    .replace(/^LOC_CITY_NAME_/, '')  // Must come before LOC_CITY_
     .replace(/^LOC_CITY_/, '')
-    .replace(/^LOC_CITY_NAME_/, '')
+    .replace(/^NAME_/, '')  // Handle if NAME_ prefix remains
     .split('_')
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ');
@@ -372,6 +375,51 @@ export function parseCityProduction(): CityProduction[] {
   }
 
   return production;
+}
+
+// Parse AI_CityBuild.csv for city founding stats (food/production advantage)
+export function parseCityFoundingStats(): CityFoundingStats[] {
+  const filePath = join(LOGS_PATH, LOG_FILES.CITY_BUILD);
+  if (!existsSync(filePath)) return [];
+
+  const content = readFileSync(filePath, 'utf-8');
+  const lines = content.trim().split('\n');
+
+  if (lines.length < 2) return [];
+
+  const stats: CityFoundingStats[] = [];
+  const seenCities = new Map<string, CityFoundingStats>(); // Track first occurrence per city per player
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(',').map(v => v.trim());
+    if (values.length < 5) continue;
+
+    const turn = parseInt(values[0], 10);
+    const playerId = parseInt(values[1], 10);
+    const city = values[2];
+    const foodAdvantage = parseFloat(values[3]);
+    const productionAdvantage = parseFloat(values[4]);
+
+    // Skip entries without food/production data (these are build decisions, not city founding)
+    if (isNaN(foodAdvantage) || isNaN(productionAdvantage)) continue;
+
+    // Only keep the first entry per city per player (founding data)
+    const key = `${playerId}:${city}`;
+    if (!seenCities.has(key)) {
+      const foundingStat: CityFoundingStats = {
+        turn,
+        playerId,
+        city,
+        cityDisplayName: formatCityName(city),
+        foodAdvantage,
+        productionAdvantage,
+      };
+      seenCities.set(key, foundingStat);
+      stats.push(foundingStat);
+    }
+  }
+
+  return stats;
 }
 
 export function parseTechStatus(): TechProgress[] {
@@ -795,6 +843,112 @@ export function formatCityProduction(production: CityProduction[], filterCiv?: s
   for (const prod of sorted.slice(0, 30)) {  // Limit to 30 entries
     const progress = Math.round((prod.currentProgress / prod.productionNeeded) * 100);
     lines.push(`| ${prod.cityDisplayName} | ${prod.itemDisplayName} | ${progress}% | ${prod.turnsRemaining} |`);
+  }
+
+  return lines.join('\n');
+}
+
+export function formatCityStatus(
+  production: CityProduction[],
+  foundingStats: CityFoundingStats[],
+  playerId: number = 0
+): string {
+  const lines: string[] = [];
+
+  // Filter founding stats for the player
+  const playerFoundingStats = foundingStats.filter(s => s.playerId === playerId);
+
+  // Get latest production data
+  const latestTurn = production.length > 0 ? Math.max(...production.map(p => p.turn)) : 0;
+  const latestProduction = production.filter(p => p.turn === latestTurn);
+
+  // Create a map of city production by city name
+  const productionByCity = new Map<string, CityProduction>();
+  for (const prod of latestProduction) {
+    productionByCity.set(prod.city, prod);
+  }
+
+  // Get all player cities from founding stats
+  const playerCities = playerFoundingStats.map(s => s.city);
+
+  // Also add any cities from production that might not be in founding stats
+  for (const prod of latestProduction) {
+    if (!playerCities.includes(prod.city)) {
+      // Try to determine if this is the player's city based on Australian city names
+      // This is a heuristic - in practice all player cities should appear in founding stats
+      const cityName = prod.city.toUpperCase();
+      if (cityName.includes('CANBERRA') || cityName.includes('SYDNEY') ||
+          cityName.includes('MELBOURNE') || cityName.includes('PERTH') ||
+          cityName.includes('ADELAIDE') || cityName.includes('BRISBANE') ||
+          cityName.includes('GEELONG') || cityName.includes('HOBART') ||
+          cityName.includes('DARWIN') || cityName.includes('TOOWOOMBA') ||
+          cityName.includes('BALLAARAT') || cityName.includes('NEWCASTLE')) {
+        playerCities.push(prod.city);
+      }
+    }
+  }
+
+  if (playerFoundingStats.length === 0 && playerCities.length === 0) {
+    return 'No city data available. Enable game logging with GameHistoryLogLevel=1 in UserOptions.txt.';
+  }
+
+  lines.push(`# City Status (Turn ${latestTurn})`);
+  lines.push('');
+  lines.push('*Note: Food advantage is from city founding. Negative values indicate challenging food locations.*');
+  lines.push('');
+
+  // Identify cities with food challenges
+  const foodChallenged = playerFoundingStats.filter(s => s.foodAdvantage < 0)
+    .sort((a, b) => a.foodAdvantage - b.foodAdvantage);
+  const foodGood = playerFoundingStats.filter(s => s.foodAdvantage >= 0)
+    .sort((a, b) => b.foodAdvantage - a.foodAdvantage);
+
+  if (foodChallenged.length > 0) {
+    lines.push('## Cities with Food Challenges');
+    lines.push('');
+    lines.push('These cities may struggle to grow without improvements like Granaries, Farms, or trade routes:');
+    lines.push('');
+    lines.push('| City | Founded | Food Adv. | Building | Turns |');
+    lines.push('|------|---------|-----------|----------|-------|');
+
+    for (const stat of foodChallenged) {
+      const prod = productionByCity.get(stat.city);
+      const building = prod ? prod.itemDisplayName : '-';
+      const turns = prod ? prod.turnsRemaining.toString() : '-';
+      const foodStr = stat.foodAdvantage.toFixed(2);
+      lines.push(`| ${stat.cityDisplayName} | T${stat.turn} | ${foodStr} | ${building} | ${turns} |`);
+    }
+    lines.push('');
+  }
+
+  if (foodGood.length > 0) {
+    lines.push('## Cities with Good Food');
+    lines.push('');
+    lines.push('| City | Founded | Food Adv. | Building | Turns |');
+    lines.push('|------|---------|-----------|----------|-------|');
+
+    for (const stat of foodGood) {
+      const prod = productionByCity.get(stat.city);
+      const building = prod ? prod.itemDisplayName : '-';
+      const turns = prod ? prod.turnsRemaining.toString() : '-';
+      const foodStr = `+${stat.foodAdvantage.toFixed(2)}`;
+      lines.push(`| ${stat.cityDisplayName} | T${stat.turn} | ${foodStr} | ${building} | ${turns} |`);
+    }
+    lines.push('');
+  }
+
+  // Summary
+  lines.push('## Summary');
+  lines.push('');
+  lines.push(`- **Total cities**: ${playerFoundingStats.length}`);
+  lines.push(`- **Food-challenged cities**: ${foodChallenged.length}`);
+  if (foodChallenged.length > 0) {
+    const worstCity = foodChallenged[0];
+    lines.push(`- **Worst food city**: ${worstCity.cityDisplayName} (${worstCity.foodAdvantage.toFixed(2)})`);
+  }
+  if (foodGood.length > 0) {
+    const bestCity = foodGood[0];
+    lines.push(`- **Best food city**: ${bestCity.cityDisplayName} (+${bestCity.foodAdvantage.toFixed(2)})`);
   }
 
   return lines.join('\n');

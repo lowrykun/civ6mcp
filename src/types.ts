@@ -199,6 +199,16 @@ export interface CityProduction {
   overflow: number;
 }
 
+// City founding stats (from AI_CityBuild.csv)
+export interface CityFoundingStats {
+  turn: number;
+  playerId: number;
+  city: string;
+  cityDisplayName: string;
+  foodAdvantage: number;
+  productionAdvantage: number;
+}
+
 // Tech
 export interface TechProgress {
   turn: number;

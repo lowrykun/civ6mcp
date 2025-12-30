@@ -30,6 +30,7 @@ import {
   parseMilitaryIntel,
   parseCombatLog,
   parseCityProduction,
+  parseCityFoundingStats,
   parseTechStatus,
   parseWorldCongress,
   parseGreatPeople,
@@ -38,6 +39,7 @@ import {
   formatMilitaryIntelligence,
   formatCombatLog,
   formatCityProduction,
+  formatCityStatus,
   formatTechStatus,
   formatWorldCongress,
   formatGreatPeople,
@@ -103,6 +105,10 @@ const GetCombatLogSchema = z.object({
 
 const GetCityProductionSchema = z.object({
   civilization: z.string().optional().describe('Filter to show production for a specific civilization'),
+});
+
+const GetCityStatusSchema = z.object({
+  player_id: z.number().optional().default(0).describe('Player ID (default: 0 for human player)'),
 });
 
 const GetTechStatusSchema = z.object({});
@@ -273,6 +279,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             civilization: {
               type: 'string',
               description: 'Filter to show production for a specific civilization',
+            },
+          },
+        },
+      },
+      {
+        name: 'get_city_status',
+        description: 'Get status of your cities including food advantage at founding (indicates growth potential) and current production. Cities with negative food advantage will struggle to grow without improvements like Granaries or Farms.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            player_id: {
+              type: 'number',
+              description: 'Player ID (default: 0 for human player)',
             },
           },
         },
@@ -655,6 +674,28 @@ Once you've played a turn, try this command again.`,
         }
 
         const formatted = formatCityProduction(production, parsed.civilization);
+        return {
+          content: [{ type: 'text', text: formatted }],
+        };
+      }
+
+      case 'get_city_status': {
+        const parsed = GetCityStatusSchema.parse(args);
+        const production = parseCityProduction();
+        const foundingStats = parseCityFoundingStats();
+
+        if (foundingStats.length === 0 && production.length === 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'No city data available. Make sure game logging is enabled (GameHistoryLogLevel=1 in UserOptions.txt) and you have played at least one turn.',
+              },
+            ],
+          };
+        }
+
+        const formatted = formatCityStatus(production, foundingStats, parsed.player_id);
         return {
           content: [{ type: 'text', text: formatted }],
         };
