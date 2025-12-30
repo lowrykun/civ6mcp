@@ -11,6 +11,7 @@ import type {
   CongressVote,
   CongressResult,
   GreatPersonEvent,
+  ScoreBreakdown,
   StrategicThreat,
   StrategicOpportunity,
   CivStatistics,
@@ -31,6 +32,7 @@ const LOG_FILES = {
   WORLD_CONGRESS: 'World_Congress.csv',
   GREAT_PEOPLE: 'Game_GreatPeople.csv',
   PLAYER_STATS: 'Player_Stats.csv',
+  PLAYER_SCORES: 'Game_PlayerScores.csv',
 };
 
 // ============ Player ID Mapping ============
@@ -574,6 +576,56 @@ export function parseCulturalGreatPeople(): GreatPersonEvent[] {
   return allGreatPeople.filter(gp =>
     CULTURAL_GP_CLASSES.some(c => gp.gpClass.toUpperCase().replace(/ /g, '_').includes(c.replace('GREAT_PERSON_CLASS_', '')))
   );
+}
+
+// Parse Game_PlayerScores.csv for score breakdown by category
+export function parseScoreBreakdown(): ScoreBreakdown[] {
+  const filePath = join(LOGS_PATH, LOG_FILES.PLAYER_SCORES);
+  if (!existsSync(filePath)) return [];
+
+  const playerMap = buildPlayerIdMap();
+  const content = readFileSync(filePath, 'utf-8');
+  const lines = content.trim().split('\n');
+
+  if (lines.length < 2) return [];
+
+  const scores: ScoreBreakdown[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(',').map(v => v.trim());
+    if (values.length < 14) continue;
+
+    const turn = parseInt(values[0], 10);
+    const playerId = parseInt(values[1], 10);
+    const totalScore = parseInt(values[2], 10);
+    const civics = parseInt(values[3], 10);
+    const empire = parseInt(values[4], 10);
+    const greatPeople = parseInt(values[5], 10);
+    const religion = parseInt(values[6], 10);
+    const tech = parseInt(values[7], 10);
+    const wonders = parseInt(values[8], 10);
+    const trade = parseInt(values[9], 10);
+    const pillage = parseInt(values[10], 10);
+    const income = parseInt(values[11], 10);
+
+    scores.push({
+      turn,
+      playerId,
+      civilization: formatCivName(getCivName(playerId, playerMap)),
+      totalScore,
+      civics,
+      empire,
+      greatPeople,
+      religion,
+      tech,
+      wonders,
+      trade,
+      pillage,
+      income,
+    });
+  }
+
+  return scores;
 }
 
 // ============ Formatting Functions ============
@@ -1170,6 +1222,97 @@ export function formatCulturalGreatPeople(events: GreatPersonEvent[]): string {
       const type = gp.gpClass.toLowerCase().includes('artist') ? '🎨' :
                    gp.gpClass.toLowerCase().includes('writer') ? '📝' : '🎵';
       lines.push(`- ${type} **${gp.displayName}** (${gp.gpClass}, ${gp.era}) - Cost: ${gp.cost}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+export function formatScoreBreakdown(scores: ScoreBreakdown[]): string {
+  if (scores.length === 0) {
+    return 'No score data available. Enable game logging (GameHistoryLogLevel=1 in UserOptions.txt).';
+  }
+
+  const lines: string[] = [];
+
+  // Get the most recent score for each player (scores are logged on each player's turn)
+  const latestByPlayer = new Map<number, ScoreBreakdown>();
+  for (const score of scores) {
+    const existing = latestByPlayer.get(score.playerId);
+    if (!existing || score.turn > existing.turn) {
+      latestByPlayer.set(score.playerId, score);
+    }
+  }
+  const latestScores = Array.from(latestByPlayer.values());
+  const latestTurn = Math.max(...latestScores.map(s => s.turn));
+
+  // Filter out city-states (they have empire < 50 and are not player 0-5)
+  const majorCivs = latestScores.filter(s => s.empire >= 50 || s.playerId <= 5);
+
+  lines.push(`# Score Breakdown (Turn ${latestTurn})`);
+  lines.push('');
+  lines.push('*Understand where each civilization\'s score comes from.*');
+  lines.push('');
+
+  // Sort by total score descending
+  const sorted = [...majorCivs].sort((a, b) => b.totalScore - a.totalScore);
+
+  // Main comparison table
+  lines.push('## Score by Category');
+  lines.push('');
+  lines.push('| Civ | Total | Empire | Tech | Civics | Wonders | Great People | Religion |');
+  lines.push('|-----|-------|--------|------|--------|---------|--------------|----------|');
+
+  for (const score of sorted) {
+    lines.push(`| ${score.civilization} | **${score.totalScore}** | ${score.empire} | ${score.tech} | ${score.civics} | ${score.wonders} | ${score.greatPeople} | ${score.religion} |`);
+  }
+  lines.push('');
+
+  // Highlight leaders in each category
+  lines.push('## Category Leaders');
+  lines.push('');
+
+  const categories: { name: string; key: keyof ScoreBreakdown; emoji: string }[] = [
+    { name: 'Empire', key: 'empire', emoji: '🏛️' },
+    { name: 'Technology', key: 'tech', emoji: '🔬' },
+    { name: 'Civics', key: 'civics', emoji: '📜' },
+    { name: 'Wonders', key: 'wonders', emoji: '🏛️' },
+    { name: 'Great People', key: 'greatPeople', emoji: '⭐' },
+    { name: 'Religion', key: 'religion', emoji: '🙏' },
+  ];
+
+  for (const cat of categories) {
+    const leader = [...majorCivs].sort((a, b) => (b[cat.key] as number) - (a[cat.key] as number))[0];
+    if (leader && (leader[cat.key] as number) > 0) {
+      lines.push(`- ${cat.emoji} **${cat.name}**: ${leader.civilization} (${leader[cat.key]})`);
+    }
+  }
+  lines.push('');
+
+  // Show player's position and what they're strong/weak in
+  const player = majorCivs.find(s => s.playerId === 0);
+  if (player) {
+    const rank = sorted.findIndex(s => s.playerId === 0) + 1;
+    lines.push('## Your Position');
+    lines.push('');
+    lines.push(`**Rank**: ${rank} of ${sorted.length} (Score: ${player.totalScore})`);
+    lines.push('');
+
+    // Find strongest and weakest categories relative to leader
+    const catScores = categories.map(cat => {
+      const max = Math.max(...majorCivs.map(s => s[cat.key] as number));
+      const yours = player[cat.key] as number;
+      return { ...cat, yours, max, percent: max > 0 ? Math.round((yours / max) * 100) : 0 };
+    }).filter(c => c.max > 0);
+
+    const strongest = catScores.sort((a, b) => b.percent - a.percent)[0];
+    const weakest = catScores.sort((a, b) => a.percent - b.percent)[0];
+
+    if (strongest && strongest.percent >= 80) {
+      lines.push(`**Strength**: ${strongest.name} (${strongest.yours}/${strongest.max} = ${strongest.percent}% of leader)`);
+    }
+    if (weakest && weakest.percent < 50) {
+      lines.push(`**Gap**: ${weakest.name} (${weakest.yours}/${weakest.max} = ${weakest.percent}% of leader)`);
     }
   }
 

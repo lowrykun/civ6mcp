@@ -86,6 +86,23 @@ export interface CivStatistics {
   tilesImproved: number;
 }
 
+// Score breakdown by category (from Game_PlayerScores.csv)
+export interface ScoreBreakdown {
+  turn: number;
+  playerId: number;
+  civilization: string;
+  totalScore: number;
+  civics: number;
+  empire: number;
+  greatPeople: number;
+  religion: number;
+  tech: number;
+  wonders: number;
+  trade: number;
+  pillage: number;
+  income: number;
+}
+
 export interface VictoryProgress {
   civilization: string;
   leader: string;

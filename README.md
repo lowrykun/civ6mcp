@@ -8,11 +8,14 @@ An MCP (Model Context Protocol) server that provides Claude with real-time acces
 - **Diplomatic Intelligence** - Track relationships, alliances, and the reasons behind them
 - **Military Analysis** - Monitor troop strength, combat desire, and threat levels
 - **Production Tracking** - See what every civilization is building
+- **City Status** - Analyze city growth potential and food challenges
 - **Victory Progress** - Track who's leading each victory type
+- **Score Breakdown** - Understand where each civ's score comes from (Empire, Tech, Wonders, etc.)
 - **Trend Analysis** - Identify rising powers and declining civilizations
 - **Combat History** - Review recent battles and ongoing conflicts
 - **World Congress** - Track voting records and resolutions
 - **Great People** - Monitor the great people race
+- **Cultural Victory Tracking** - Track Great Artists, Writers, and Musicians
 
 ## Requirements
 
@@ -93,15 +96,18 @@ This gives Claude context about all the available tools and how to provide strat
 | `get_yield_comparison` | Compare all civs' science, culture, gold, faith, military |
 | `get_victory_progress` | Who's leading each victory type |
 | `get_civ_statistics` | Detailed per-civ stats (specify turn number optional) |
+| `get_score_breakdown` | Score breakdown by category (Empire, Tech, Wonders, etc.) |
 | `get_trend_analysis` | Track changes over time, identify rising/declining powers |
 | `get_diplomatic_status` | Relationships: allied, friendly, denounced, war |
 | `get_diplomatic_modifiers` | Specific reasons for +/- relations |
 | `get_military_intelligence` | Strength, combat desire, threat levels |
 | `get_combat_log` | Recent battles, units, damage |
 | `get_city_production` | What every city is building |
+| `get_city_status` | City growth potential based on food advantage at founding |
 | `get_tech_status` | Technology progress by civilization |
 | `get_world_congress` | Voting records and resolution outcomes |
 | `get_great_people` | Great People claimed and available |
+| `get_great_people_culture` | Track Artists, Writers, Musicians for cultural victory |
 | `list_saves` | Find save files |
 | `read_game_state` | Parse save file for basic game info |
 | `get_strategy_brief` | Formatted briefing from save file |

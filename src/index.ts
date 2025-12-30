@@ -35,6 +35,7 @@ import {
   parseWorldCongress,
   parseGreatPeople,
   parseCulturalGreatPeople,
+  parseScoreBreakdown,
   formatDiplomacyStatus,
   formatDiplomacyModifiers,
   formatMilitaryIntelligence,
@@ -45,6 +46,7 @@ import {
   formatWorldCongress,
   formatGreatPeople,
   formatCulturalGreatPeople,
+  formatScoreBreakdown,
   generateStrategicOverview,
 } from './logs-parser.js';
 
@@ -120,6 +122,8 @@ const GetWorldCongressSchema = z.object({});
 const GetGreatPeopleSchema = z.object({});
 
 const GetCulturalGreatPeopleSchema = z.object({});
+
+const GetScoreBreakdownSchema = z.object({});
 
 const GetStrategicOverviewSchema = z.object({
   civilization: z.string().optional().describe('Your civilization name for personalized analysis'),
@@ -327,6 +331,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'get_great_people_culture',
         description: 'Track Great Artists, Writers, and Musicians for cultural victory analysis. Shows who is collecting cultural Great People, how many Great Works have been created, and who is leading the culture race.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'get_score_breakdown',
+        description: 'Get detailed score breakdown by category (Empire, Tech, Civics, Wonders, Great People, Religion) for all civilizations. Shows why each civ is ahead or behind and identifies your strengths and gaps.',
         inputSchema: {
           type: 'object',
           properties: {},
@@ -788,6 +800,26 @@ Once you've played a turn, try this command again.`,
         }
 
         const formatted = formatCulturalGreatPeople(events);
+        return {
+          content: [{ type: 'text', text: formatted }],
+        };
+      }
+
+      case 'get_score_breakdown': {
+        const scores = parseScoreBreakdown();
+
+        if (scores.length === 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'No score data available. Enable game logging (GameHistoryLogLevel=1 in UserOptions.txt) and play at least one turn.',
+              },
+            ],
+          };
+        }
+
+        const formatted = formatScoreBreakdown(scores);
         return {
           content: [{ type: 'text', text: formatted }],
         };
